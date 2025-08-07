@@ -1,0 +1,53 @@
+version: '3.9' # used to define and run multi-container Docker applications
+
+services:
+  rabbitmq:
+    image: 'rabbitmq:3-management'
+    ports:
+      - ${AMQP_PORT}:${AMQP_PORT}
+      - ${RABBITMQ_DASHBOARD_PORT}:${RABBITMQ_DASHBOARD_PORT}
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBIT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASSWORD}
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    ports:
+      - ${ORDER_SERVICE_PORT}:${ORDER_SERVICE_PORT}
+    environment:
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - ORDER_SERVICE_PORT=${ORDER_SERVICE_PORT}
+      - ORDER_QUEUE=${ORDER_QUEUE}
+      - RABBIT_USER=${RABBIT_USER}
+      - RABBIT_PASSWORD=${RABBIT_PASSWORD}
+    depends_on:
+      - rabbitmq
+
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    ports:
+      - ${NOTIFICATION_SERVICE_PORT}:${NOTIFICATION_SERVICE_PORT}
+    environment:
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - ORDER_QUEUE=${ORDER_QUEUE}
+      - RABBIT_USER=${RABBIT_USER}
+      - RABBIT_PASSWORD=${RABBIT_PASSWORD}
+    depends_on:
+      - rabbitmq
+
+  inventory-service:
+    build:
+      context: ./inventory-service
+      dockerfile: Dockerfile
+    ports:
+      - ${INVENTORY_SERVICE_PORT}:${INVENTORY_SERVICE_PORT}
+    environment:
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - ORDER_QUEUE=${ORDER_QUEUE}
+      - RABBIT_USER=${RABBIT_USER}
+      - RABBIT_PASSWORD=${RABBIT_PASSWORD}
+    depends_on:
+      - rabbitmq
