@@ -412,7 +412,7 @@ This project is licensed under the ISC License - see the [LICENSE](LICENSE) file
 
 ## 👨‍💻 Author
 
-**ITE4 Student - Activity 5**
+**ITE4 Student - [JianefrelDionaldo](https://github.com/JianefrelDionaldo)**
 _Microservices Architecture Implementation_
 
 ## 🔒 Security Best Practices
