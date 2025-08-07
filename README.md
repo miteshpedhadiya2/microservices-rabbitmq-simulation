@@ -1,4 +1,4 @@
-# Activity 5: Microservice Simulation with REST API and RabbitMQ
+# Microservice Simulation with REST API and RabbitMQ
 
 <center>
 
